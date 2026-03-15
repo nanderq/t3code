@@ -5,6 +5,7 @@ import { useEffect } from "react";
 
 import ThreadSidebar from "../components/Sidebar";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useTouchBar } from "../hooks/useTouchBar";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { resolveShortcutCommand } from "../keybindings";
@@ -92,6 +93,7 @@ function ChatRouteGlobalShortcuts() {
 
 function ChatRouteLayout() {
   const navigate = useNavigate();
+  useTouchBar();
 
   useEffect(() => {
     const onMenuAction = window.desktopBridge?.onMenuAction;

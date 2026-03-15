@@ -6,6 +6,7 @@ import { GitHubIcon } from "./Icons";
 import {
   buildGitActionProgressStages,
   buildMenuItems,
+  deriveGitActionAvailability,
   type GitActionIconName,
   type GitActionMenuItem,
   type GitQuickAction,
@@ -209,6 +210,11 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
   const gitActionMenuItems = useMemo(
     () => buildMenuItems(gitStatusForActions, isGitActionRunning, hasOriginRemote),
     [gitStatusForActions, hasOriginRemote, isGitActionRunning],
+  );
+  const gitActionAvailability = useMemo(
+    () =>
+      deriveGitActionAvailability(gitStatusForActions, isGitActionRunning, hasOriginRemote, isRepo),
+    [gitStatusForActions, hasOriginRemote, isGitActionRunning, isRepo],
   );
   const quickAction = useMemo(
     () =>
@@ -449,6 +455,35 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
       gitStatusForActions,
     ],
   );
+
+  useEffect(() => {
+    const onTouchBarAction = window.desktopBridge?.onTouchBarAction;
+    if (typeof onTouchBarAction !== "function" || !gitCwd) {
+      return;
+    }
+
+    return onTouchBarAction((action) => {
+      if (action.type === "git.commit") {
+        if (!gitActionAvailability.canCommit) {
+          return;
+        }
+        void runGitActionWithToast({ action: "commit" });
+        return;
+      }
+
+      if (action.type === "git.push") {
+        if (!gitActionAvailability.canPush) {
+          return;
+        }
+        void runGitActionWithToast({ action: "commit_push", forcePushOnlyProgress: true });
+      }
+    });
+  }, [
+    gitActionAvailability.canCommit,
+    gitActionAvailability.canPush,
+    gitCwd,
+    runGitActionWithToast,
+  ]);
 
   const continuePendingDefaultBranchAction = useCallback(() => {
     if (!pendingDefaultBranchAction) return;

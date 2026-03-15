@@ -3,6 +3,7 @@ import { assert, describe, it } from "vitest";
 import {
   buildGitActionProgressStages,
   buildMenuItems,
+  deriveGitActionAvailability,
   requiresDefaultBranchConfirmation,
   resolveAutoFeatureBranchName,
   resolveDefaultBranchActionDialogCopy,
@@ -126,6 +127,93 @@ describe("when: actions are busy", () => {
         dialogAction: "create_pr",
       },
     ]);
+  });
+});
+
+describe("deriveGitActionAvailability", () => {
+  it("enables commit for dirty repos", () => {
+    assert.deepEqual(deriveGitActionAvailability(status({ hasWorkingTreeChanges: true }), false), {
+      canCommit: true,
+      canPush: false,
+      canCreatePr: false,
+      canOpenPr: false,
+      hasOpenPr: false,
+    });
+  });
+
+  it("enables push and create PR for clean branches ahead of upstream", () => {
+    assert.deepEqual(deriveGitActionAvailability(status({ aheadCount: 2 }), false), {
+      canCommit: false,
+      canPush: true,
+      canCreatePr: true,
+      canOpenPr: false,
+      hasOpenPr: false,
+    });
+  });
+
+  it("disables push and create PR when the branch is behind upstream", () => {
+    assert.deepEqual(
+      deriveGitActionAvailability(status({ aheadCount: 2, behindCount: 1 }), false),
+      {
+        canCommit: false,
+        canPush: false,
+        canCreatePr: false,
+        canOpenPr: false,
+        hasOpenPr: false,
+      },
+    );
+  });
+
+  it("disables commit and push on detached HEAD", () => {
+    assert.deepEqual(
+      deriveGitActionAvailability(
+        status({ branch: null, hasWorkingTreeChanges: false, hasUpstream: false }),
+        false,
+      ),
+      {
+        canCommit: false,
+        canPush: false,
+        canCreatePr: false,
+        canOpenPr: false,
+        hasOpenPr: false,
+      },
+    );
+  });
+
+  it("allows push and create PR without upstream when origin exists and commits are ahead", () => {
+    assert.deepEqual(
+      deriveGitActionAvailability(status({ hasUpstream: false, aheadCount: 2 }), false, true),
+      {
+        canCommit: false,
+        canPush: true,
+        canCreatePr: true,
+        canOpenPr: false,
+        hasOpenPr: false,
+      },
+    );
+  });
+
+  it("disables push and create PR without upstream when origin is missing", () => {
+    assert.deepEqual(
+      deriveGitActionAvailability(status({ hasUpstream: false, aheadCount: 2 }), false, false),
+      {
+        canCommit: false,
+        canPush: false,
+        canCreatePr: false,
+        canOpenPr: false,
+        hasOpenPr: false,
+      },
+    );
+  });
+
+  it("disables all actions while busy", () => {
+    assert.deepEqual(deriveGitActionAvailability(status({ hasWorkingTreeChanges: true }), true), {
+      canCommit: false,
+      canPush: false,
+      canCreatePr: false,
+      canOpenPr: false,
+      hasOpenPr: false,
+    });
   });
 });
 

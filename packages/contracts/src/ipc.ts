@@ -45,6 +45,7 @@ import type {
   OrchestrationEvent,
   OrchestrationReadModel,
 } from "./orchestration";
+import type { ProjectId } from "./baseSchemas";
 import { EditorId } from "./editor";
 
 export interface ContextMenuItem<T extends string = string> {
@@ -94,6 +95,30 @@ export interface DesktopUpdateActionResult {
   state: DesktopUpdateState;
 }
 
+export type TouchBarAction =
+  | { type: "project.select"; projectId: ProjectId }
+  | { type: "editor.openPreferred" }
+  | { type: "git.commit" }
+  | { type: "git.push" };
+
+export interface TouchBarState {
+  project: {
+    label: string;
+    items: Array<{
+      id: ProjectId;
+      label: string;
+    }>;
+  } | null;
+  editor: {
+    label: string;
+    enabled: boolean;
+  } | null;
+  git: {
+    commitEnabled: boolean;
+    pushEnabled: boolean;
+  } | null;
+}
+
 export interface DesktopBridge {
   getWsUrl: () => string | null;
   pickFolder: () => Promise<string | null>;
@@ -109,6 +134,8 @@ export interface DesktopBridge {
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
+  setTouchBarState: (state: TouchBarState) => Promise<void>;
+  onTouchBarAction: (listener: (action: TouchBarAction) => void) => () => void;
 }
 
 export interface NativeApi {
