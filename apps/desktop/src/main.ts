@@ -18,9 +18,12 @@ import {
 import type { MenuItemConstructorOptions } from "electron";
 import * as Effect from "effect/Effect";
 import type {
+  ProjectId,
+  TouchBarAction,
   DesktopTheme,
   DesktopUpdateActionResult,
   DesktopUpdateState,
+  TouchBarState,
 } from "@t3tools/contracts";
 import { autoUpdater } from "electron-updater";
 
@@ -43,6 +46,7 @@ import {
   reduceDesktopUpdateStateOnUpdateAvailable,
 } from "./updateMachine";
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch";
+import { buildTouchBar } from "./touchBar";
 
 fixPath();
 
@@ -75,6 +79,8 @@ const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000;
 const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const DESKTOP_UPDATE_CHANNEL = "latest";
 const DESKTOP_UPDATE_ALLOW_PRERELEASE = false;
+const SET_TOUCH_BAR_STATE_CHANNEL = "desktop:set-touch-bar-state";
+const TOUCH_BAR_ACTION_CHANNEL = "desktop:touch-bar-action";
 
 type DesktopUpdateErrorContext = DesktopUpdateState["errorContext"];
 
@@ -91,6 +97,7 @@ let aboutCommitHashCache: string | null | undefined;
 let desktopLogSink: RotatingFileSink | null = null;
 let backendLogSink: RotatingFileSink | null = null;
 let restoreStdIoCapture: (() => void) | null = null;
+let touchBarState: TouchBarState = { project: null, editor: null, git: null };
 
 let destructiveMenuIconCache: Electron.NativeImage | null | undefined;
 const desktopRuntimeInfo = resolveDesktopRuntimeInfo({
@@ -158,6 +165,100 @@ function getSafeTheme(rawTheme: unknown): DesktopTheme | null {
   }
 
   return null;
+}
+
+function getSafeTouchBarState(rawState: unknown): TouchBarState | null {
+  if (typeof rawState !== "object" || rawState === null) {
+    return null;
+  }
+
+  const state = rawState as Record<string, unknown>;
+  const rawProject = state.project;
+  const rawEditor = state.editor;
+  const rawGit = state.git;
+  const projectRecord =
+    typeof rawProject === "object" && rawProject !== null
+      ? (rawProject as Record<string, unknown>)
+      : null;
+  const rawProjectItems =
+    projectRecord !== null && Array.isArray(projectRecord.items) ? projectRecord.items : null;
+  const editorRecord =
+    typeof rawEditor === "object" && rawEditor !== null
+      ? (rawEditor as Record<string, unknown>)
+      : null;
+  const gitRecord =
+    typeof rawGit === "object" && rawGit !== null ? (rawGit as Record<string, unknown>) : null;
+
+  const projectItems =
+    rawProjectItems !== null
+      ? rawProjectItems
+          .map((item) => {
+            if (typeof item !== "object" || item === null) {
+              return null;
+            }
+            const itemRecord = item as Record<string, unknown>;
+            if (typeof itemRecord.id !== "string" || typeof itemRecord.label !== "string") {
+              return null;
+            }
+            return {
+              id: itemRecord.id as ProjectId,
+              label: itemRecord.label,
+            };
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null)
+      : null;
+
+  const project =
+    rawProject === null
+      ? null
+      : projectRecord !== null &&
+          typeof projectRecord.label === "string" &&
+          projectItems !== null &&
+          rawProjectItems !== null &&
+          projectItems.length === rawProjectItems.length
+        ? {
+            label: projectRecord.label,
+            items: projectItems,
+          }
+        : null;
+
+  const editor =
+    rawEditor === null
+      ? null
+      : editorRecord !== null &&
+          typeof editorRecord.label === "string" &&
+          typeof editorRecord.enabled === "boolean"
+        ? {
+            label: editorRecord.label,
+            enabled: editorRecord.enabled,
+          }
+        : null;
+
+  const git =
+    rawGit === null
+      ? null
+      : gitRecord !== null &&
+          typeof gitRecord.commitEnabled === "boolean" &&
+          typeof gitRecord.pushEnabled === "boolean"
+        ? {
+            commitEnabled: gitRecord.commitEnabled,
+            pushEnabled: gitRecord.pushEnabled,
+          }
+        : null;
+
+  if (rawProject !== null && project === null) {
+    return null;
+  }
+
+  if (rawEditor !== null && editor === null) {
+    return null;
+  }
+
+  if (rawGit !== null && git === null) {
+    return null;
+  }
+
+  return { project, editor, git };
 }
 
 function writeDesktopStreamChunk(
@@ -510,6 +611,23 @@ function dispatchMenuAction(action: string): void {
   }
 
   send();
+}
+
+function dispatchTouchBarAction(window: BrowserWindow, action: TouchBarAction): void {
+  if (window.isDestroyed()) return;
+  window.webContents.send(TOUCH_BAR_ACTION_CHANNEL, action);
+}
+
+function applyTouchBar(window: BrowserWindow): void {
+  if (process.platform !== "darwin" || window.isDestroyed()) {
+    return;
+  }
+
+  window.setTouchBar(
+    buildTouchBar(touchBarState, (action) => {
+      dispatchTouchBarAction(window, action);
+    }),
+  );
 }
 
 function handleCheckForUpdatesMenuClick(): void {
@@ -1211,6 +1329,20 @@ function registerIpcHandlers(): void {
       state: updateState,
     } satisfies DesktopUpdateActionResult;
   });
+
+  ipcMain.removeHandler(SET_TOUCH_BAR_STATE_CHANNEL);
+  ipcMain.handle(SET_TOUCH_BAR_STATE_CHANNEL, async (_event, rawState: unknown) => {
+    const nextState = getSafeTouchBarState(rawState);
+    if (!nextState) {
+      return;
+    }
+
+    touchBarState = nextState;
+    const window = BrowserWindow.fromWebContents(_event.sender);
+    if (window) {
+      applyTouchBar(window);
+    }
+  });
 }
 
 function getIconOption(): { icon: string } | Record<string, never> {
@@ -1283,6 +1415,7 @@ function createWindow(): BrowserWindow {
   window.webContents.on("did-finish-load", () => {
     window.setTitle(APP_DISPLAY_NAME);
     emitUpdateState();
+    applyTouchBar(window);
   });
   window.once("ready-to-show", () => {
     window.show();

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DesktopBridge } from "@t3tools/contracts";
+import type { DesktopBridge, ProjectId } from "@t3tools/contracts";
 
 const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
 const CONFIRM_CHANNEL = "desktop:confirm";
@@ -11,6 +11,8 @@ const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
+const SET_TOUCH_BAR_STATE_CHANNEL = "desktop:set-touch-bar-state";
+const TOUCH_BAR_ACTION_CHANNEL = "desktop:touch-bar-action";
 const wsUrl = process.env.T3CODE_DESKTOP_WS_URL ?? null;
 
 contextBridge.exposeInMainWorld("desktopBridge", {
@@ -43,6 +45,34 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.on(UPDATE_STATE_CHANNEL, wrappedListener);
     return () => {
       ipcRenderer.removeListener(UPDATE_STATE_CHANNEL, wrappedListener);
+    };
+  },
+  setTouchBarState: (state) => ipcRenderer.invoke(SET_TOUCH_BAR_STATE_CHANNEL, state),
+  onTouchBarAction: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, action: unknown) => {
+      if (typeof action !== "object" || action === null) {
+        return;
+      }
+      const actionRecord = action as Record<string, unknown>;
+      if (actionRecord.type === "project.select" && typeof actionRecord.projectId === "string") {
+        listener({
+          type: actionRecord.type,
+          projectId: actionRecord.projectId as ProjectId,
+        });
+        return;
+      }
+      if (
+        actionRecord.type === "editor.openPreferred" ||
+        actionRecord.type === "git.commit" ||
+        actionRecord.type === "git.push"
+      ) {
+        listener({ type: actionRecord.type });
+      }
+    };
+
+    ipcRenderer.on(TOUCH_BAR_ACTION_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(TOUCH_BAR_ACTION_CHANNEL, wrappedListener);
     };
   },
 } satisfies DesktopBridge);

@@ -25,6 +25,14 @@ export interface GitQuickAction {
   hint?: string;
 }
 
+export interface GitActionAvailability {
+  canCommit: boolean;
+  canPush: boolean;
+  canCreatePr: boolean;
+  canOpenPr: boolean;
+  hasOpenPr: boolean;
+}
+
 export interface DefaultBranchActionDialogCopy {
   title: string;
   description: string;
@@ -116,35 +124,13 @@ export function buildMenuItems(
   hasOriginRemote = true,
 ): GitActionMenuItem[] {
   if (!gitStatus) return [];
-
-  const hasBranch = gitStatus.branch !== null;
-  const hasChanges = gitStatus.hasWorkingTreeChanges;
-  const hasOpenPr = gitStatus.pr?.state === "open";
-  const isBehind = gitStatus.behindCount > 0;
-  const canPushWithoutUpstream = hasOriginRemote && !gitStatus.hasUpstream;
-  const canCommit = !isBusy && hasChanges;
-  const canPush =
-    !isBusy &&
-    hasBranch &&
-    !hasChanges &&
-    !isBehind &&
-    gitStatus.aheadCount > 0 &&
-    (gitStatus.hasUpstream || canPushWithoutUpstream);
-  const canCreatePr =
-    !isBusy &&
-    hasBranch &&
-    !hasChanges &&
-    !hasOpenPr &&
-    gitStatus.aheadCount > 0 &&
-    !isBehind &&
-    (gitStatus.hasUpstream || canPushWithoutUpstream);
-  const canOpenPr = !isBusy && hasOpenPr;
+  const availability = deriveGitActionAvailability(gitStatus, isBusy, hasOriginRemote);
 
   return [
     {
       id: "commit",
       label: "Commit",
-      disabled: !canCommit,
+      disabled: !availability.canCommit,
       icon: "commit",
       kind: "open_dialog",
       dialogAction: "commit",
@@ -152,28 +138,72 @@ export function buildMenuItems(
     {
       id: "push",
       label: "Push",
-      disabled: !canPush,
+      disabled: !availability.canPush,
       icon: "push",
       kind: "open_dialog",
       dialogAction: "push",
     },
-    hasOpenPr
+    availability.hasOpenPr
       ? {
           id: "pr",
           label: "View PR",
-          disabled: !canOpenPr,
+          disabled: !availability.canOpenPr,
           icon: "pr",
           kind: "open_pr",
         }
       : {
           id: "pr",
           label: "Create PR",
-          disabled: !canCreatePr,
+          disabled: !availability.canCreatePr,
           icon: "pr",
           kind: "open_dialog",
           dialogAction: "create_pr",
         },
   ];
+}
+
+export function deriveGitActionAvailability(
+  gitStatus: GitStatusResult | null,
+  isBusy: boolean,
+  hasOriginRemote = true,
+  isRepo = true,
+): GitActionAvailability {
+  if (!isRepo || !gitStatus) {
+    return {
+      canCommit: false,
+      canPush: false,
+      canCreatePr: false,
+      canOpenPr: false,
+      hasOpenPr: false,
+    };
+  }
+
+  const hasBranch = gitStatus.branch !== null;
+  const hasChanges = gitStatus.hasWorkingTreeChanges;
+  const hasOpenPr = gitStatus.pr?.state === "open";
+  const isBehind = gitStatus.behindCount > 0;
+  const canPushWithoutUpstream = hasOriginRemote && !gitStatus.hasUpstream;
+
+  return {
+    canCommit: !isBusy && hasChanges,
+    canPush:
+      !isBusy &&
+      hasBranch &&
+      !hasChanges &&
+      !isBehind &&
+      gitStatus.aheadCount > 0 &&
+      (gitStatus.hasUpstream || canPushWithoutUpstream),
+    canCreatePr:
+      !isBusy &&
+      hasBranch &&
+      !hasChanges &&
+      !hasOpenPr &&
+      gitStatus.aheadCount > 0 &&
+      !isBehind &&
+      (gitStatus.hasUpstream || canPushWithoutUpstream),
+    canOpenPr: !isBusy && hasOpenPr,
+    hasOpenPr,
+  };
 }
 
 export function resolveQuickAction(
