@@ -54,7 +54,10 @@ contextBridge.exposeInMainWorld("desktopBridge", {
         return;
       }
       const actionRecord = action as Record<string, unknown>;
-      if (actionRecord.type === "project.select" && typeof actionRecord.projectId === "string") {
+      if (
+        (actionRecord.type === "project.select" || actionRecord.type === "project.newThread") &&
+        typeof actionRecord.projectId === "string"
+      ) {
         listener({
           type: actionRecord.type,
           projectId: actionRecord.projectId as ProjectId,
