@@ -3,6 +3,10 @@ import { ProjectId, type GitStatusResult } from "@t3tools/contracts";
 
 const testState = vi.hoisted(() => ({
   cleanups: [] as Array<(() => void) | undefined>,
+  preferredEditor: "vscode" as string | null,
+  serverConfig: {
+    availableEditors: ["vscode"] as string[],
+  },
   gitStatus: null as GitStatusResult | null,
   branchList: null as {
     isRepo: boolean;
@@ -44,8 +48,12 @@ vi.mock("react", () => ({
 }));
 
 vi.mock("@tanstack/react-query", () => ({
+  queryOptions: <T>(options: T) => options,
   useQuery: (options: { queryKey: readonly unknown[] }) => {
     const [scope, type] = options.queryKey;
+    if (scope === "server" && type === "config") {
+      return { data: testState.serverConfig, error: null };
+    }
     if (scope === "git" && type === "status") {
       return { data: testState.gitStatus, error: null };
     }
@@ -70,6 +78,11 @@ vi.mock("./useHandleNewThread", () => ({
   useHandleNewThread: () => testState.hookValue,
 }));
 
+vi.mock("../editorPreferences", () => ({
+  usePreferredEditor: () => [testState.preferredEditor, vi.fn()] as const,
+  openInPreferredEditor: vi.fn(),
+}));
+
 vi.mock("../lib/gitReactQuery", () => ({
   gitStatusQueryOptions: (cwd: string | null) => ({
     queryKey: ["git", "status", cwd] as const,
@@ -85,7 +98,11 @@ vi.mock("../lib/gitReactQuery", () => ({
 
 function getWindowForTest(): Window & typeof globalThis & { desktopBridge?: unknown } {
   const testGlobal = globalThis as typeof globalThis & {
-    window?: Window & typeof globalThis & { desktopBridge?: unknown };
+    window?: Window &
+      typeof globalThis & {
+        desktopBridge?: unknown;
+        localStorage?: Storage;
+      };
   };
   if (!testGlobal.window) {
     testGlobal.window = {} as Window & typeof globalThis & { desktopBridge?: unknown };
@@ -93,10 +110,32 @@ function getWindowForTest(): Window & typeof globalThis & { desktopBridge?: unkn
   return testGlobal.window;
 }
 
+function createLocalStorageMock(): Storage {
+  const store = new Map<string, string>();
+  return {
+    clear: () => store.clear(),
+    getItem: (key) => store.get(key) ?? null,
+    key: (index) => Array.from(store.keys())[index] ?? null,
+    get length() {
+      return store.size;
+    },
+    removeItem: (key) => {
+      store.delete(key);
+    },
+    setItem: (key, value) => {
+      store.set(key, value);
+    },
+  };
+}
+
 describe("useTouchBar", () => {
   beforeEach(() => {
     vi.resetModules();
     testState.cleanups = [];
+    testState.preferredEditor = "vscode";
+    testState.serverConfig = {
+      availableEditors: ["vscode"],
+    };
     testState.gitStatus = null;
     testState.branchList = null;
     testState.isRunStackedActionRunning = false;
@@ -105,6 +144,11 @@ describe("useTouchBar", () => {
     testState.hookValue.activeThread = undefined;
     testState.hookValue.handleNewThread.mockReset();
     testState.hookValue.projects = [];
+    Object.defineProperty(getWindowForTest(), "localStorage", {
+      configurable: true,
+      writable: true,
+      value: createLocalStorageMock(),
+    });
     Reflect.deleteProperty(getWindowForTest(), "desktopBridge");
   });
 
@@ -126,6 +170,7 @@ describe("useTouchBar", () => {
         label: "Select Project",
         items: [],
       },
+      activeProjectId: null,
       editor: null,
       git: null,
     });
@@ -159,7 +204,12 @@ describe("useTouchBar", () => {
           { id: "project-1", label: "First" },
         ],
       },
-      editor: null,
+      activeProjectId: "project-1",
+      editor: {
+        label: "Open",
+        enabled: true,
+        editorId: "vscode",
+      },
       git: {
         commitEnabled: false,
         pushEnabled: false,
@@ -191,7 +241,12 @@ describe("useTouchBar", () => {
         label: "First",
         items: [{ id: "project-1", label: "First" }],
       },
-      editor: null,
+      activeProjectId: "project-1",
+      editor: {
+        label: "Open",
+        enabled: true,
+        editorId: "vscode",
+      },
       git: {
         commitEnabled: false,
         pushEnabled: false,
@@ -228,7 +283,12 @@ describe("useTouchBar", () => {
         label: "First",
         items: [{ id: "project-1", label: "First" }],
       },
-      editor: null,
+      activeProjectId: "project-1",
+      editor: {
+        label: "Open",
+        enabled: true,
+        editorId: "vscode",
+      },
       git: {
         commitEnabled: true,
         pushEnabled: false,
@@ -264,7 +324,12 @@ describe("useTouchBar", () => {
         label: "First",
         items: [{ id: "project-1", label: "First" }],
       },
-      editor: null,
+      activeProjectId: "project-1",
+      editor: {
+        label: "Open",
+        enabled: true,
+        editorId: "vscode",
+      },
       git: {
         commitEnabled: false,
         pushEnabled: true,
@@ -301,7 +366,12 @@ describe("useTouchBar", () => {
         label: "First",
         items: [{ id: "project-1", label: "First" }],
       },
-      editor: null,
+      activeProjectId: "project-1",
+      editor: {
+        label: "Open",
+        enabled: true,
+        editorId: "vscode",
+      },
       git: {
         commitEnabled: false,
         pushEnabled: false,
@@ -336,8 +406,53 @@ describe("useTouchBar", () => {
         label: "First",
         items: [{ id: "project-1", label: "First" }],
       },
-      editor: null,
+      activeProjectId: "project-1",
+      editor: {
+        label: "Open",
+        enabled: true,
+        editorId: "vscode",
+      },
       git: null,
+    });
+  });
+
+  it("updates the touch bar editor icon when the preferred editor changes", async () => {
+    const setTouchBarState = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(getWindowForTest(), "desktopBridge", {
+      configurable: true,
+      writable: true,
+      value: {
+        setTouchBarState,
+      },
+    });
+    testState.hookValue.projects = [
+      { id: ProjectId.makeUnsafe("project-1"), name: "First", cwd: "/repo/first" },
+    ];
+    testState.hookValue.activeThread = {
+      projectId: ProjectId.makeUnsafe("project-1"),
+    };
+
+    const { useTouchBar } = await import("./useTouchBar");
+    useTouchBar();
+
+    testState.preferredEditor = "cursor";
+    useTouchBar();
+
+    expect(setTouchBarState).toHaveBeenLastCalledWith({
+      project: {
+        label: "First",
+        items: [{ id: "project-1", label: "First" }],
+      },
+      activeProjectId: "project-1",
+      editor: {
+        label: "Open",
+        enabled: true,
+        editorId: "cursor",
+      },
+      git: {
+        commitEnabled: false,
+        pushEnabled: false,
+      },
     });
   });
 
@@ -363,6 +478,75 @@ describe("useTouchBar", () => {
     touchBarListener?.({ type: "project.select", projectId: "project-1" });
 
     expect(testState.hookValue.handleNewThread).toHaveBeenCalledWith("project-1");
+  });
+
+  it("routes new-thread touch bar actions through handleNewThread", async () => {
+    let touchBarListener: ((action: { type: string; projectId?: string }) => void) | undefined;
+    Object.defineProperty(getWindowForTest(), "desktopBridge", {
+      configurable: true,
+      writable: true,
+      value: {
+        setTouchBarState: vi.fn().mockResolvedValue(undefined),
+        onTouchBarAction: vi.fn((listener) => {
+          touchBarListener = listener;
+          return vi.fn();
+        }),
+      },
+    });
+    testState.hookValue.projects = [
+      { id: ProjectId.makeUnsafe("project-1"), name: "First", cwd: "/repo/first" },
+    ];
+
+    const { useTouchBar } = await import("./useTouchBar");
+    useTouchBar();
+    touchBarListener?.({ type: "project.newThread", projectId: "project-1" });
+
+    expect(testState.hookValue.handleNewThread).toHaveBeenCalledWith("project-1");
+  });
+
+  it("ignores selecting the already active project", async () => {
+    let touchBarListener: ((action: { type: string; projectId?: string }) => void) | undefined;
+    const setTouchBarState = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(getWindowForTest(), "desktopBridge", {
+      configurable: true,
+      writable: true,
+      value: {
+        setTouchBarState,
+        onTouchBarAction: vi.fn((listener) => {
+          touchBarListener = listener;
+          return vi.fn();
+        }),
+      },
+    });
+    testState.hookValue.projects = [
+      { id: ProjectId.makeUnsafe("project-1"), name: "First", cwd: "/repo/first" },
+    ];
+    testState.hookValue.activeThread = {
+      projectId: ProjectId.makeUnsafe("project-1"),
+    };
+
+    const { useTouchBar } = await import("./useTouchBar");
+    useTouchBar();
+    touchBarListener?.({ type: "project.select", projectId: "project-1" });
+
+    expect(testState.hookValue.handleNewThread).not.toHaveBeenCalled();
+    expect(setTouchBarState).toHaveBeenCalledTimes(1);
+    expect(setTouchBarState).toHaveBeenCalledWith({
+      project: {
+        label: "First",
+        items: [{ id: "project-1", label: "First" }],
+      },
+      activeProjectId: "project-1",
+      editor: {
+        label: "Open",
+        enabled: true,
+        editorId: "vscode",
+      },
+      git: {
+        commitEnabled: false,
+        pushEnabled: false,
+      },
+    });
   });
 
   it("ignores project selection for missing projects", async () => {
@@ -416,6 +600,7 @@ describe("useTouchBar", () => {
 
     expect(setTouchBarState).toHaveBeenLastCalledWith({
       project: null,
+      activeProjectId: null,
       editor: null,
       git: null,
     });

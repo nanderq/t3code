@@ -1357,6 +1357,50 @@ it.layer(TestLayer)("git integration", (it) => {
       }),
     );
 
+    it.effect("returns an empty status when the working directory is missing", () =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir();
+        const fileSystem = yield* FileSystem.FileSystem;
+        const core = yield* GitCore;
+        const missingCwd = path.join(tmp, "missing-worktree");
+
+        yield* fileSystem.remove(missingCwd, { recursive: true, force: true });
+
+        const status = yield* core.statusDetails(missingCwd);
+        expect(status).toEqual({
+          branch: null,
+          upstreamRef: null,
+          hasWorkingTreeChanges: false,
+          workingTree: {
+            files: [],
+            insertions: 0,
+            deletions: 0,
+          },
+          hasUpstream: false,
+          aheadCount: 0,
+          behindCount: 0,
+        });
+      }),
+    );
+
+    it.effect("treats a missing working directory as not a repository when listing branches", () =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir();
+        const fileSystem = yield* FileSystem.FileSystem;
+        const core = yield* GitCore;
+        const missingCwd = path.join(tmp, "missing-worktree");
+
+        yield* fileSystem.remove(missingCwd, { recursive: true, force: true });
+
+        const result = yield* core.listBranches({ cwd: missingCwd });
+        expect(result).toEqual({
+          branches: [],
+          isRepo: false,
+          hasOriginRemote: false,
+        });
+      }),
+    );
+
     it.effect("computes ahead count against base branch when no upstream is configured", () =>
       Effect.gen(function* () {
         const tmp = yield* makeTmpDir();

@@ -97,6 +97,7 @@ export interface DesktopUpdateActionResult {
 
 export type TouchBarAction =
   | { type: "project.select"; projectId: ProjectId }
+  | { type: "project.newThread"; projectId: ProjectId }
   | { type: "editor.openPreferred" }
   | { type: "git.commit" }
   | { type: "git.push" };
@@ -109,9 +110,11 @@ export interface TouchBarState {
       label: string;
     }>;
   } | null;
+  activeProjectId: ProjectId | null;
   editor: {
     label: string;
     enabled: boolean;
+    editorId?: EditorId;
   } | null;
   git: {
     commitEnabled: boolean;

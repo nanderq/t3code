@@ -217,6 +217,26 @@ function createGitCommandError(
   });
 }
 
+function isMissingWorkingDirectoryError(error: GitCommandError): boolean {
+  return error.detail.toLowerCase().includes("working directory does not exist");
+}
+
+function emptyStatusDetails() {
+  return {
+    branch: null,
+    upstreamRef: null,
+    hasWorkingTreeChanges: false,
+    workingTree: {
+      files: [],
+      insertions: 0,
+      deletions: 0,
+    },
+    hasUpstream: false,
+    aheadCount: 0,
+    behindCount: 0,
+  };
+}
+
 const makeGitCore = Effect.gen(function* () {
   const git = yield* GitService;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -652,7 +672,7 @@ const makeGitCore = Effect.gen(function* () {
       return branchLastCommit;
     });
 
-  const statusDetails: GitCoreShape["statusDetails"] = (cwd) =>
+  const statusDetailsBase: GitCoreShape["statusDetails"] = (cwd) =>
     Effect.gen(function* () {
       yield* refreshStatusUpstreamIfStale(cwd).pipe(Effect.ignoreCause({ log: true }));
 
@@ -752,6 +772,17 @@ const makeGitCore = Effect.gen(function* () {
         behindCount,
       };
     });
+
+  const statusDetails: GitCoreShape["statusDetails"] = (cwd) =>
+    statusDetailsBase(cwd).pipe(
+      Effect.catch((error) =>
+        isMissingWorkingDirectoryError(error)
+          ? Effect.logWarning(
+              `GitCore.statusDetails: treating missing working directory as an empty git state for ${cwd}.`,
+            ).pipe(Effect.as(emptyStatusDetails()))
+          : Effect.fail(error),
+      ),
+    );
 
   const status: GitCoreShape["status"] = (input) =>
     statusDetails(input.cwd).pipe(
@@ -994,7 +1025,7 @@ const makeGitCore = Effect.gen(function* () {
       Effect.map((trimmed) => (trimmed.length > 0 ? trimmed : null)),
     );
 
-  const listBranches: GitCoreShape["listBranches"] = (input) =>
+  const listBranchesBase: GitCoreShape["listBranches"] = (input) =>
     Effect.gen(function* () {
       const branchRecencyPromise = readBranchRecency(input.cwd).pipe(
         Effect.catch(() => Effect.succeed(new Map<string, number>())),
@@ -1180,6 +1211,17 @@ const makeGitCore = Effect.gen(function* () {
 
       return { branches, isRepo: true, hasOriginRemote: remoteNames.includes("origin") };
     });
+
+  const listBranches: GitCoreShape["listBranches"] = (input) =>
+    listBranchesBase(input).pipe(
+      Effect.catch((error) =>
+        isMissingWorkingDirectoryError(error)
+          ? Effect.logWarning(
+              `GitCore.listBranches: treating missing working directory as a non-repository for ${input.cwd}.`,
+            ).pipe(Effect.as({ branches: [], isRepo: false, hasOriginRemote: false }))
+          : Effect.fail(error),
+      ),
+    );
 
   const createWorktree: GitCoreShape["createWorktree"] = (input) =>
     Effect.gen(function* () {

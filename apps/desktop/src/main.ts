@@ -46,6 +46,7 @@ import {
   reduceDesktopUpdateStateOnUpdateAvailable,
 } from "./updateMachine";
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch";
+import { resolveDesktopIconPath } from "./resourcePath";
 import { buildTouchBar } from "./touchBar";
 
 fixPath();
@@ -97,7 +98,12 @@ let aboutCommitHashCache: string | null | undefined;
 let desktopLogSink: RotatingFileSink | null = null;
 let backendLogSink: RotatingFileSink | null = null;
 let restoreStdIoCapture: (() => void) | null = null;
-let touchBarState: TouchBarState = { project: null, editor: null, git: null };
+let touchBarState: TouchBarState = {
+  project: null,
+  activeProjectId: null,
+  editor: null,
+  git: null,
+};
 
 let destructiveMenuIconCache: Electron.NativeImage | null | undefined;
 const desktopRuntimeInfo = resolveDesktopRuntimeInfo({
@@ -174,6 +180,7 @@ function getSafeTouchBarState(rawState: unknown): TouchBarState | null {
 
   const state = rawState as Record<string, unknown>;
   const rawProject = state.project;
+  const rawActiveProjectId = state.activeProjectId;
   const rawEditor = state.editor;
   const rawGit = state.git;
   const projectRecord =
@@ -222,17 +229,46 @@ function getSafeTouchBarState(rawState: unknown): TouchBarState | null {
           }
         : null;
 
-  const editor =
+  const activeProjectId =
+    rawActiveProjectId === null || rawActiveProjectId === undefined
+      ? null
+      : typeof rawActiveProjectId === "string"
+        ? (rawActiveProjectId as ProjectId)
+        : null;
+
+  const editor: TouchBarState["editor"] =
     rawEditor === null
       ? null
-      : editorRecord !== null &&
-          typeof editorRecord.label === "string" &&
-          typeof editorRecord.enabled === "boolean"
-        ? {
+      : (() => {
+          if (
+            editorRecord === null ||
+            typeof editorRecord.label !== "string" ||
+            typeof editorRecord.enabled !== "boolean"
+          ) {
+            return null;
+          }
+
+          const editorId =
+            editorRecord.editorId === "cursor" ||
+            editorRecord.editorId === "vscode" ||
+            editorRecord.editorId === "zed" ||
+            editorRecord.editorId === "antigravity" ||
+            editorRecord.editorId === "file-manager"
+              ? editorRecord.editorId
+              : editorRecord.editorId === undefined
+                ? undefined
+                : null;
+
+          if (editorId === null) {
+            return null;
+          }
+
+          return {
             label: editorRecord.label,
             enabled: editorRecord.enabled,
-          }
-        : null;
+            ...(editorId ? { editorId } : {}),
+          };
+        })();
 
   const git =
     rawGit === null
@@ -250,6 +286,10 @@ function getSafeTouchBarState(rawState: unknown): TouchBarState | null {
     return null;
   }
 
+  if (rawActiveProjectId !== null && rawActiveProjectId !== undefined && activeProjectId === null) {
+    return null;
+  }
+
   if (rawEditor !== null && editor === null) {
     return null;
   }
@@ -258,7 +298,7 @@ function getSafeTouchBarState(rawState: unknown): TouchBarState | null {
     return null;
   }
 
-  return { project, editor, git };
+  return { project, activeProjectId, editor, git };
 }
 
 function writeDesktopStreamChunk(
@@ -755,27 +795,6 @@ function configureApplicationMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-function resolveResourcePath(fileName: string): string | null {
-  const candidates = [
-    Path.join(__dirname, "../resources", fileName),
-    Path.join(__dirname, "../prod-resources", fileName),
-    Path.join(process.resourcesPath, "resources", fileName),
-    Path.join(process.resourcesPath, fileName),
-  ];
-
-  for (const candidate of candidates) {
-    if (FS.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  return null;
-}
-
-function resolveIconPath(ext: "ico" | "icns" | "png"): string | null {
-  return resolveResourcePath(`icon.${ext}`);
-}
-
 /**
  * Resolve the Electron userData directory path.
  *
@@ -818,7 +837,7 @@ function configureAppIdentity(): void {
   }
 
   if (process.platform === "darwin" && app.dock) {
-    const iconPath = resolveIconPath("png");
+    const iconPath = resolveDesktopIconPath("png");
     if (iconPath) {
       app.dock.setIcon(iconPath);
     }
@@ -1348,7 +1367,7 @@ function registerIpcHandlers(): void {
 function getIconOption(): { icon: string } | Record<string, never> {
   if (process.platform === "darwin") return {}; // macOS uses .icns from app bundle
   const ext = process.platform === "win32" ? "ico" : "png";
-  const iconPath = resolveIconPath(ext);
+  const iconPath = resolveDesktopIconPath(ext);
   return iconPath ? { icon: iconPath } : {};
 }
 

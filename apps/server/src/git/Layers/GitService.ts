@@ -6,7 +6,7 @@
  *
  * @module GitServiceLive
  */
-import { Effect, Layer, Option, Schema, Stream } from "effect";
+import { Effect, FileSystem, Layer, Option, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { GitCommandError } from "../Errors.ts";
 import {
@@ -69,6 +69,7 @@ const collectOutput = Effect.fn(function* <E>(
 
 const makeGitService = Effect.gen(function* () {
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const fileSystem = yield* FileSystem.FileSystem;
 
   const execute: GitServiceShape["execute"] = Effect.fnUntraced(function* (input) {
     const commandInput = {
@@ -79,6 +80,20 @@ const makeGitService = Effect.gen(function* () {
     const maxOutputBytes = input.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
 
     const commandEffect = Effect.gen(function* () {
+      const cwdExists = yield* fileSystem
+        .exists(commandInput.cwd)
+        .pipe(
+          Effect.mapError(toGitCommandError(commandInput, "failed to access working directory.")),
+        );
+      if (!cwdExists) {
+        return yield* new GitCommandError({
+          operation: commandInput.operation,
+          command: quoteGitCommand(commandInput.args),
+          cwd: commandInput.cwd,
+          detail: "Working directory does not exist.",
+        });
+      }
+
       const child = yield* commandSpawner
         .spawn(
           ChildProcess.make("git", commandInput.args, {
