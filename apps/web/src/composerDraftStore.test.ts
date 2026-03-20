@@ -1,11 +1,19 @@
+import * as Schema from "effect/Schema";
 import { ProjectId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  COMPOSER_DRAFT_STORAGE_KEY,
   type ComposerImageAttachment,
-  createDebouncedStorage,
   useComposerDraftStore,
 } from "./composerDraftStore";
+import { removeLocalStorageItem, setLocalStorageItem } from "./hooks/useLocalStorage";
+import {
+  INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
+  insertInlineTerminalContextPlaceholder,
+  type TerminalContextDraft,
+} from "./lib/terminalContext";
+import { createDebouncedStorage } from "./lib/storage";
 
 function makeImage(input: {
   id: string;
@@ -31,6 +39,26 @@ function makeImage(input: {
     sizeBytes: file.size,
     previewUrl: input.previewUrl,
     file,
+  };
+}
+
+function makeTerminalContext(input: {
+  id: string;
+  text?: string;
+  terminalId?: string;
+  terminalLabel?: string;
+  lineStart?: number;
+  lineEnd?: number;
+}): TerminalContextDraft {
+  return {
+    id: input.id,
+    threadId: ThreadId.makeUnsafe("thread-dedupe"),
+    terminalId: input.terminalId ?? "default",
+    terminalLabel: input.terminalLabel ?? "Terminal 1",
+    lineStart: input.lineStart ?? 4,
+    lineEnd: input.lineEnd ?? 5,
+    text: input.text ?? "git status\nOn branch main",
+    createdAt: "2026-03-13T12:00:00.000Z",
   };
 }
 
@@ -155,6 +183,236 @@ describe("composerDraftStore clearComposerContent", () => {
     const draft = useComposerDraftStore.getState().draftsByThreadId[threadId];
     expect(draft).toBeUndefined();
     expect(revokeSpy).not.toHaveBeenCalledWith("blob:optimistic");
+  });
+});
+
+describe("composerDraftStore syncPersistedAttachments", () => {
+  const threadId = ThreadId.makeUnsafe("thread-sync-persisted");
+
+  beforeEach(() => {
+    removeLocalStorageItem(COMPOSER_DRAFT_STORAGE_KEY);
+    useComposerDraftStore.setState({
+      draftsByThreadId: {},
+      draftThreadsByThreadId: {},
+      projectDraftThreadIdByProjectId: {},
+    });
+  });
+
+  afterEach(() => {
+    removeLocalStorageItem(COMPOSER_DRAFT_STORAGE_KEY);
+  });
+
+  it("treats malformed persisted draft storage as empty", async () => {
+    const image = makeImage({
+      id: "img-persisted",
+      previewUrl: "blob:persisted",
+    });
+    useComposerDraftStore.getState().addImage(threadId, image);
+    setLocalStorageItem(
+      COMPOSER_DRAFT_STORAGE_KEY,
+      {
+        version: 2,
+        state: {
+          draftsByThreadId: {
+            [threadId]: {
+              attachments: "not-an-array",
+            },
+          },
+        },
+      },
+      Schema.Unknown,
+    );
+
+    useComposerDraftStore.getState().syncPersistedAttachments(threadId, [
+      {
+        id: image.id,
+        name: image.name,
+        mimeType: image.mimeType,
+        sizeBytes: image.sizeBytes,
+        dataUrl: image.previewUrl,
+      },
+    ]);
+    await Promise.resolve();
+
+    expect(
+      useComposerDraftStore.getState().draftsByThreadId[threadId]?.persistedAttachments,
+    ).toEqual([]);
+    expect(
+      useComposerDraftStore.getState().draftsByThreadId[threadId]?.nonPersistedImageIds,
+    ).toEqual([image.id]);
+  });
+});
+
+describe("composerDraftStore terminal contexts", () => {
+  const threadId = ThreadId.makeUnsafe("thread-dedupe");
+
+  beforeEach(() => {
+    useComposerDraftStore.setState({
+      draftsByThreadId: {},
+      draftThreadsByThreadId: {},
+      projectDraftThreadIdByProjectId: {},
+    });
+  });
+
+  it("deduplicates identical terminal contexts by selection signature", () => {
+    const first = makeTerminalContext({ id: "ctx-1" });
+    const duplicate = makeTerminalContext({ id: "ctx-2" });
+
+    useComposerDraftStore.getState().addTerminalContexts(threadId, [first, duplicate]);
+
+    const draft = useComposerDraftStore.getState().draftsByThreadId[threadId];
+    expect(draft?.terminalContexts.map((context) => context.id)).toEqual(["ctx-1"]);
+  });
+
+  it("clears terminal contexts when clearing composer content", () => {
+    useComposerDraftStore
+      .getState()
+      .addTerminalContext(threadId, makeTerminalContext({ id: "ctx-1" }));
+
+    useComposerDraftStore.getState().clearComposerContent(threadId);
+
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toBeUndefined();
+  });
+
+  it("inserts terminal contexts at the requested inline prompt position", () => {
+    const firstInsertion = insertInlineTerminalContextPlaceholder("alpha beta", 6);
+    const secondInsertion = insertInlineTerminalContextPlaceholder(firstInsertion.prompt, 0);
+
+    expect(
+      useComposerDraftStore
+        .getState()
+        .insertTerminalContext(
+          threadId,
+          firstInsertion.prompt,
+          makeTerminalContext({ id: "ctx-1" }),
+          firstInsertion.contextIndex,
+        ),
+    ).toBe(true);
+    expect(
+      useComposerDraftStore.getState().insertTerminalContext(
+        threadId,
+        secondInsertion.prompt,
+        makeTerminalContext({
+          id: "ctx-2",
+          terminalLabel: "Terminal 2",
+          lineStart: 9,
+          lineEnd: 10,
+        }),
+        secondInsertion.contextIndex,
+      ),
+    ).toBe(true);
+
+    const draft = useComposerDraftStore.getState().draftsByThreadId[threadId];
+    expect(draft?.prompt).toBe(
+      `${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} alpha ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} beta`,
+    );
+    expect(draft?.terminalContexts.map((context) => context.id)).toEqual(["ctx-2", "ctx-1"]);
+  });
+
+  it("omits terminal context text from persisted drafts", () => {
+    useComposerDraftStore
+      .getState()
+      .addTerminalContext(threadId, makeTerminalContext({ id: "ctx-persist" }));
+
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        partialize: (state: ReturnType<typeof useComposerDraftStore.getState>) => unknown;
+      };
+    };
+    const persistedState = persistApi.getOptions().partialize(useComposerDraftStore.getState()) as {
+      draftsByThreadId?: Record<string, { terminalContexts?: Array<Record<string, unknown>> }>;
+    };
+
+    expect(
+      persistedState.draftsByThreadId?.[threadId]?.terminalContexts?.[0],
+      "Expected terminal context metadata to be persisted.",
+    ).toMatchObject({
+      id: "ctx-persist",
+      terminalId: "default",
+      terminalLabel: "Terminal 1",
+      lineStart: 4,
+      lineEnd: 5,
+    });
+    expect(
+      persistedState.draftsByThreadId?.[threadId]?.terminalContexts?.[0]?.text,
+    ).toBeUndefined();
+  });
+
+  it("hydrates persisted terminal contexts without in-memory snapshot text", () => {
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        merge: (
+          persistedState: unknown,
+          currentState: ReturnType<typeof useComposerDraftStore.getState>,
+        ) => ReturnType<typeof useComposerDraftStore.getState>;
+      };
+    };
+    const mergedState = persistApi.getOptions().merge(
+      {
+        draftsByThreadId: {
+          [threadId]: {
+            prompt: INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
+            attachments: [],
+            terminalContexts: [
+              {
+                id: "ctx-rehydrated",
+                threadId,
+                createdAt: "2026-03-13T12:00:00.000Z",
+                terminalId: "default",
+                terminalLabel: "Terminal 1",
+                lineStart: 4,
+                lineEnd: 5,
+              },
+            ],
+          },
+        },
+        draftThreadsByThreadId: {},
+        projectDraftThreadIdByProjectId: {},
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+
+    expect(mergedState.draftsByThreadId[threadId]?.terminalContexts).toMatchObject([
+      {
+        id: "ctx-rehydrated",
+        terminalId: "default",
+        terminalLabel: "Terminal 1",
+        lineStart: 4,
+        lineEnd: 5,
+        text: "",
+      },
+    ]);
+  });
+
+  it("sanitizes malformed persisted drafts during merge", () => {
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        merge: (
+          persistedState: unknown,
+          currentState: ReturnType<typeof useComposerDraftStore.getState>,
+        ) => ReturnType<typeof useComposerDraftStore.getState>;
+      };
+    };
+    const mergedState = persistApi.getOptions().merge(
+      {
+        draftsByThreadId: {
+          [threadId]: {
+            prompt: "",
+            attachments: "not-an-array",
+            terminalContexts: "not-an-array",
+            provider: "bogus-provider",
+            modelOptions: "not-an-object",
+          },
+        },
+        draftThreadsByThreadId: "not-an-object",
+        projectDraftThreadIdByProjectId: "not-an-object",
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+
+    expect(mergedState.draftsByThreadId[threadId]).toBeUndefined();
+    expect(mergedState.draftThreadsByThreadId).toEqual({});
+    expect(mergedState.projectDraftThreadIdByProjectId).toEqual({});
   });
 });
 
@@ -337,8 +595,8 @@ describe("composerDraftStore project draft thread mapping", () => {
   });
 });
 
-describe("composerDraftStore codex fast mode", () => {
-  const threadId = ThreadId.makeUnsafe("thread-service-tier");
+describe("composerDraftStore modelOptions", () => {
+  const threadId = ThreadId.makeUnsafe("thread-model-options");
 
   beforeEach(() => {
     useComposerDraftStore.setState({
@@ -348,17 +606,39 @@ describe("composerDraftStore codex fast mode", () => {
     });
   });
 
-  it("stores codex fast mode in the draft", () => {
+  it("stores provider-scoped model options in the draft", () => {
     const store = useComposerDraftStore.getState();
-    store.setCodexFastMode(threadId, true);
+    store.setModelOptions(threadId, {
+      codex: {
+        reasoningEffort: "xhigh",
+        fastMode: true,
+      },
+      claudeAgent: {
+        thinking: false,
+      },
+    });
 
-    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]?.codexFastMode).toBe(true);
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]?.modelOptions).toEqual({
+      codex: {
+        reasoningEffort: "xhigh",
+        fastMode: true,
+      },
+      claudeAgent: {
+        thinking: false,
+      },
+    });
   });
 
-  it("clears codex fast mode when reset to the default", () => {
+  it("drops default-only model options from the draft", () => {
     const store = useComposerDraftStore.getState();
-    store.setCodexFastMode(threadId, true);
-    store.setCodexFastMode(threadId, false);
+    store.setModelOptions(threadId, {
+      codex: {
+        reasoningEffort: "high",
+      },
+      claudeAgent: {
+        thinking: true,
+      },
+    });
 
     expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toBeUndefined();
   });

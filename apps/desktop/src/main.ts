@@ -31,7 +31,7 @@ import type { ContextMenuItem } from "@t3tools/contracts";
 import { NetService } from "@t3tools/shared/Net";
 import { RotatingFileSink } from "@t3tools/shared/logging";
 import { showDesktopConfirmDialog } from "./confirmDialog";
-import { fixPath } from "./fixPath";
+import { syncShellEnvironment } from "./syncShellEnvironment";
 import { getAutoUpdateDisabledReason, shouldBroadcastDownloadProgress } from "./updateState";
 import {
   createInitialDesktopUpdateState,
@@ -49,7 +49,7 @@ import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runti
 import { resolveDesktopIconPath } from "./resourcePath";
 import { buildTouchBar } from "./touchBar";
 
-fixPath();
+syncShellEnvironment();
 
 const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
 const CONFIRM_CHANNEL = "desktop:confirm";

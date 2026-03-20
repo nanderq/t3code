@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
-import { type ProviderKind } from "@t3tools/contracts";
+import { type ProviderKind, DEFAULT_GIT_TEXT_GENERATION_MODEL } from "@t3tools/contracts";
 import { getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
-import { MAX_CUSTOM_MODEL_LENGTH, useAppSettings } from "../appSettings";
+import { getAppModelOptions, MAX_CUSTOM_MODEL_LENGTH, useAppSettings } from "../appSettings";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
@@ -54,6 +54,13 @@ const MODEL_PROVIDER_SETTINGS: Array<{
     placeholder: "your-codex-model-slug",
     example: "gpt-6.7-codex-ultra-preview",
   },
+  {
+    provider: "claudeAgent",
+    title: "Claude",
+    description: "Save additional Claude model slugs for the picker and `/model` command.",
+    placeholder: "your-claude-model-slug",
+    example: "claude-sonnet-5-0",
+  },
 ] as const;
 
 const TIMESTAMP_FORMAT_LABELS = {
@@ -67,6 +74,8 @@ function getCustomModelsForProvider(
   provider: ProviderKind,
 ) {
   switch (provider) {
+    case "claudeAgent":
+      return settings.customClaudeModels;
     case "codex":
     default:
       return settings.customCodexModels;
@@ -78,6 +87,8 @@ function getDefaultCustomModelsForProvider(
   provider: ProviderKind,
 ) {
   switch (provider) {
+    case "claudeAgent":
+      return defaults.customClaudeModels;
     case "codex":
     default:
       return defaults.customCodexModels;
@@ -86,6 +97,8 @@ function getDefaultCustomModelsForProvider(
 
 function patchCustomModels(provider: ProviderKind, models: string[]) {
   switch (provider) {
+    case "claudeAgent":
+      return { customClaudeModels: models };
     case "codex":
     default:
       return { customCodexModels: models };
@@ -102,6 +115,7 @@ function SettingsRouteView() {
     Record<ProviderKind, string>
   >({
     codex: "",
+    claudeAgent: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
@@ -111,6 +125,17 @@ function SettingsRouteView() {
   const codexHomePath = settings.codexHomePath;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const availableEditors = serverConfigQuery.data?.availableEditors;
+
+  const gitTextGenerationModelOptions = getAppModelOptions(
+    "codex",
+    settings.customCodexModels,
+    settings.textGenerationModel,
+  );
+  const selectedGitTextGenerationModelLabel =
+    gitTextGenerationModelOptions.find(
+      (option) =>
+        option.slug === (settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL),
+    )?.name ?? settings.textGenerationModel;
 
   const openKeybindingsFile = useCallback(() => {
     if (!keybindingsConfigPath) return;
@@ -500,6 +525,65 @@ function SettingsRouteView() {
                   );
                 })}
               </div>
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-medium text-foreground">Git</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Configure the model used for generating commit messages, PR titles, and branch
+                  names.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-4 rounded-lg border border-border bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">Text generation model</p>
+                  <p className="text-xs text-muted-foreground">
+                    Model used for auto-generated git content.
+                  </p>
+                </div>
+                <Select
+                  value={settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL}
+                  onValueChange={(value) => {
+                    if (value) {
+                      updateSettings({
+                        textGenerationModel: value,
+                      });
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    className="w-full shrink-0 sm:w-48"
+                    aria-label="Git text generation model"
+                  >
+                    <SelectValue>{selectedGitTextGenerationModelLabel}</SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup align="end">
+                    {gitTextGenerationModelOptions.map((option) => (
+                      <SelectItem key={option.slug} value={option.slug}>
+                        {option.name}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              </div>
+
+              {settings.textGenerationModel !== defaults.textGenerationModel ? (
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() =>
+                      updateSettings({
+                        textGenerationModel: defaults.textGenerationModel,
+                      })
+                    }
+                  >
+                    Restore default
+                  </Button>
+                </div>
+              ) : null}
             </section>
 
             <section className="rounded-2xl border border-border bg-card p-5">
