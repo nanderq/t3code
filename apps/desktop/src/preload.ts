@@ -88,6 +88,19 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   getClientPlatform: () => clientPlatform,
   setNotificationBadge: (badge) =>
     ipcRenderer.invoke(IpcChannels.SET_NOTIFICATION_BADGE_CHANNEL, badge),
+  setDiscordPresence: (presence) =>
+    ipcRenderer.invoke(IpcChannels.SET_DISCORD_PRESENCE_CHANNEL, presence),
+  getDiscordPresenceStatus: () =>
+    ipcRenderer.invoke(IpcChannels.GET_DISCORD_PRESENCE_STATUS_CHANNEL),
+  onDiscordPresenceStatus: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, status: unknown) => {
+      if (typeof status === "string") listener(status as Parameters<typeof listener>[0]);
+    };
+    ipcRenderer.on(IpcChannels.DISCORD_PRESENCE_STATUS_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.DISCORD_PRESENCE_STATUS_CHANNEL, wrappedListener);
+    };
+  },
   onNotificationBadgeClear: (listener) => {
     const handler = () => listener();
     ipcRenderer.on(IpcChannels.SET_NOTIFICATION_BADGE_CHANNEL, handler);

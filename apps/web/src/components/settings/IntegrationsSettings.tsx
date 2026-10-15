@@ -27,6 +27,8 @@ import {
   DEFAULT_BROWSER_VIEWPORT,
   DEFAULT_PREVIEW_APPEARANCE,
   DEFAULT_PREVIEW_ZOOM_FACTOR,
+  type DesktopDiscordPresenceStatus,
+  type DiscordPresenceField,
   FILL_PREVIEW_VIEWPORT,
   PREVIEW_VIEWPORT_MAX_AREA,
   PREVIEW_VIEWPORT_MAX_DIMENSION,
@@ -41,7 +43,7 @@ import {
 } from "@t3tools/contracts";
 import { PREVIEW_VIEWPORT_PRESETS } from "@t3tools/shared/previewViewport";
 import { MoreVertical, Plus as PlusIcon } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ScreenRotationIcon } from "~/browser/ScreenRotationIcon";
 import { AnimatedHeight } from "~/components/AnimatedHeight";
@@ -100,12 +102,14 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { Checkbox } from "../ui/checkbox";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   getClientSettings,
   persistClientSettingsUpdate,
   useClientSettings,
   useClientSettingsHydrated,
+  useUpdateClientSettings,
   useUpdatePrimarySettings,
 } from "~/hooks/useSettings";
 
@@ -1545,9 +1549,150 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
   );
 }
 
+const DISCORD_PRESENCE_FIELD_OPTIONS: ReadonlyArray<{
+  readonly field: DiscordPresenceField;
+  readonly title: string;
+  readonly description: string;
+}> = [
+  {
+    field: "project",
+    title: "Project name",
+    description: "The project the thread you are viewing belongs to.",
+  },
+  {
+    field: "model",
+    title: "Model",
+    description: "The model the thread you are viewing is using.",
+  },
+  {
+    field: "activity",
+    title: "Agent activity",
+    description: "How many agents are running, or waiting on you.",
+  },
+  {
+    field: "elapsed",
+    title: "Elapsed time",
+    description: "How long this T3 Code session has been running.",
+  },
+];
+
+/**
+ * The connection state a user needs to act on. `connecting` is transient, so it
+ * renders nothing rather than flashing a message on every open.
+ */
+function resolveDiscordStatusPresentation(
+  status: DesktopDiscordPresenceStatus | null,
+): { readonly message: string; readonly className: string } | null {
+  switch (status) {
+    case "connected":
+      return { message: "Connected to Discord.", className: "text-muted-foreground" };
+    case "disconnected":
+      return {
+        message: "Can't reach Discord. Open the Discord desktop app to show this status.",
+        className: "text-warning-foreground",
+      };
+    case "unconfigured":
+      return { message: "This build isn't set up for Discord.", className: "text-muted-foreground" };
+    default:
+      return null;
+  }
+}
+
+function DiscordPresenceSetting({ disabled }: { readonly disabled: boolean }) {
+  const enabled = useClientSettings((settings) => settings.discordRichPresenceEnabled);
+  const fields = useClientSettings((settings) => settings.discordPresenceFields);
+  const updateSettings = useUpdateClientSettings();
+  const [status, setStatus] = useState<DesktopDiscordPresenceStatus | null>(null);
+  const statusPresentation = resolveDiscordStatusPresentation(status);
+
+  useEffect(() => {
+    if (!enabled || disabled) return;
+    const bridge = window.desktopBridge;
+    if (!bridge?.getDiscordPresenceStatus) return;
+    let active = true;
+    void bridge
+      .getDiscordPresenceStatus()
+      .then((next) => {
+        if (active) setStatus(next);
+      })
+      .catch(() => undefined);
+    const unsubscribe = bridge.onDiscordPresenceStatus?.((next) => setStatus(next));
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [disabled, enabled]);
+
+  const toggleField = (field: DiscordPresenceField, on: boolean) => {
+    const next = on
+      ? fields.includes(field)
+        ? null
+        : [...fields, field]
+      : fields.filter((candidate) => candidate !== field);
+    if (next !== null) updateSettings({ discordPresenceFields: next });
+  };
+
+  return (
+    <SettingsRow
+      {...searchableSetting("discord-rich-presence")}
+      description="Show what you are working on in your Discord profile. Choose what appears below; Discord must have activity sharing enabled."
+      resetAction={
+        !disabled && enabled ? (
+          <SettingResetButton
+            label="Discord Rich Presence"
+            onClick={() => updateSettings({ discordRichPresenceEnabled: false })}
+          />
+        ) : null
+      }
+      control={
+        <Switch
+          disabled={disabled}
+          checked={enabled}
+          aria-label="Discord Rich Presence"
+          onCheckedChange={(checked) =>
+            updateSettings({ discordRichPresenceEnabled: Boolean(checked) })
+          }
+        />
+      }
+    >
+      {enabled ? (
+        <>
+          <div className="mt-2 divide-y divide-border/60 overflow-hidden rounded-lg border border-border/60">
+            {DISCORD_PRESENCE_FIELD_OPTIONS.map(({ field, title, description }) => (
+              <label
+                key={field}
+                className="flex cursor-pointer items-start gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40"
+              >
+                <Checkbox
+                  className="mt-0.5"
+                  checked={fields.includes(field)}
+                  disabled={disabled}
+                  onCheckedChange={(checked) => toggleField(field, checked === true)}
+                />
+                <span className="min-w-0">
+                  <span className="block text-xs font-medium text-foreground">{title}</span>
+                  <span className="block text-xs leading-snug text-muted-foreground">
+                    {description}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          {statusPresentation !== null ? (
+            <p role="status" className={`pb-2 text-xs ${statusPresentation.className}`}>
+              {statusPresentation.message}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+    </SettingsRow>
+  );
+}
+
 export function IntegrationsSettingsPanel() {
   // Client-local preview defaults are editable only where the preview exists.
   const previewDefaultsDisabled = !isElectron;
+  const desktopOnly = !isElectron;
   const previewDefaults = (
     <>
       <BrowserProfilesSetting disabled={previewDefaultsDisabled} />
@@ -1566,6 +1711,15 @@ export function IntegrationsSettingsPanel() {
       {/* Server-authoritative agent access is scoped by the header selection;
           the preview defaults below are device-local and ignore it. */}
       <ProjectDefaultsSettings category="integrations" />
+      <SettingsSection id="discord" title="Discord">
+        {desktopOnly ? (
+          <SettingsUnavailableGroup message="Only available in the desktop app.">
+            <DiscordPresenceSetting disabled />
+          </SettingsUnavailableGroup>
+        ) : (
+          <DiscordPresenceSetting disabled={false} />
+        )}
+      </SettingsSection>
       <SettingsSection id="browser" title="Browser">
         {previewDefaultsDisabled ? (
           <SettingsUnavailableGroup message="Only available in the desktop app.">

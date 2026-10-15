@@ -1,5 +1,8 @@
 export const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
 export const SET_NOTIFICATION_BADGE_CHANNEL = "desktop:set-notification-badge";
+export const SET_DISCORD_PRESENCE_CHANNEL = "desktop:set-discord-presence";
+export const DISCORD_PRESENCE_STATUS_CHANNEL = "desktop:discord-presence-status";
+export const GET_DISCORD_PRESENCE_STATUS_CHANNEL = "desktop:get-discord-presence-status";
 export const PICK_PROJECT_FAVICON_CHANNEL = "desktop:pick-project-favicon";
 export const PICK_THEME_FILES_CHANNEL = "desktop:pick-theme-files";
 export const SET_THEME_CHANNEL = "desktop:set-theme";

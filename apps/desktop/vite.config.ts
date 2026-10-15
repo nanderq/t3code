@@ -18,6 +18,11 @@ const publicConfigDefine = {
   __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: JSON.stringify(
     repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() ?? "",
   ),
+  // Public Discord application id for Rich Presence. Empty disables the
+  // feature, so forks and CI builds need no configuration.
+  __T3CODE_BUILD_DISCORD_CLIENT_ID__: JSON.stringify(
+    repoEnv.T3CODE_DISCORD_CLIENT_ID?.trim() ?? "",
+  ),
 };
 
 export default defineConfig({

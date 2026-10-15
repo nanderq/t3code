@@ -726,6 +726,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["xcode android studio sdk avd runtime"],
   },
   {
+    id: "discord-rich-presence",
+    title: "Discord Rich Presence",
+    to: "/settings/integrations",
+    targetId: "discord",
+    searchTerms: ["activity status friends presence"],
+    desktopOnly: true,
+  },
+  {
     id: "browser-profiles",
     title: "Browser profiles",
     to: "/settings/integrations",

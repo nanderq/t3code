@@ -136,6 +136,9 @@ Optional `production` environment variables:
   `off`.
 - `RELAY_LEGACY_TUNNEL_CLEANUP_MODE` with the same values, for tunnels whose host never registered
   recovery. Missing and blank values use `off`.
+- `DISCORD_CLIENT_ID` to bake Discord Rich Presence into desktop builds. It is a public identifier,
+  not a secret, and must belong to a Discord application whose Rich Presence art uses the asset key
+  `t3-code`. Omit it to ship the feature inert.
 
 Required `production` environment secrets:
 

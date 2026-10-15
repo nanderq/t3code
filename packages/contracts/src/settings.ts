@@ -318,6 +318,20 @@ export type ModelPreferences = {
   readonly providerModelPreferences: typeof ProviderModelPreferences.Type;
 };
 
+/**
+ * Facts a user can choose to publish through Discord Rich Presence. Kept as a
+ * closed set so the presenter can compose the activity from whatever is
+ * enabled, and so the renderer can't invent presentation fields.
+ */
+export const DiscordPresenceField = Schema.Literals(["project", "model", "activity", "elapsed"]);
+export type DiscordPresenceField = typeof DiscordPresenceField.Type;
+
+/** Default presentation: project name plus thread activity. */
+export const DEFAULT_DISCORD_PRESENCE_FIELDS: ReadonlyArray<DiscordPresenceField> = [
+  "project",
+  "activity",
+];
+
 export const ClientSettingsSchema = Schema.Struct({
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
@@ -397,6 +411,14 @@ export const ClientSettingsSchema = Schema.Struct({
   diffFilesCollapsed: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   diffIgnoreWhitespace: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   diffLayout: DiffLayout.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_DIFF_LAYOUT))),
+  // Desktop-only. Publishes a coarse activity summary as Discord Rich
+  // Presence. Off by default: presence is visible to the user's Discord
+  // friends, and `discordPresenceFields` is the user's privacy dial for what
+  // appears.
+  discordRichPresenceEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  discordPresenceFields: Schema.Array(DiscordPresenceField).pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_DISCORD_PRESENCE_FIELDS)),
+  ),
   environmentIdentificationMode: EnvironmentIdentificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE)),
   ),
@@ -1730,6 +1752,8 @@ export const ClientSettingsPatch = Schema.Struct({
   diffFilesCollapsed: Schema.optionalKey(Schema.Boolean),
   diffIgnoreWhitespace: Schema.optionalKey(Schema.Boolean),
   diffLayout: Schema.optionalKey(DiffLayout),
+  discordRichPresenceEnabled: Schema.optionalKey(Schema.Boolean),
+  discordPresenceFields: Schema.optionalKey(Schema.Array(DiscordPresenceField)),
   environmentIdentificationMode: Schema.optionalKey(EnvironmentIdentificationMode),
   glassOpacity: Schema.optionalKey(GlassOpacity),
   onboardingCompletedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),

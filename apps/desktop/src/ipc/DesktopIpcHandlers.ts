@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import { receiveProviderAuthCallback, cancelProviderAuthCallback } from "./methods/providerAuth.ts";
 import * as DesktopIpc from "./DesktopIpc.ts";
 import { installNotificationBadge } from "./methods/notificationBadge.ts";
+import { setDiscordPresence, getDiscordPresenceStatus } from "./methods/discordPresence.ts";
 import { getClientSettings, setClientSettings } from "./methods/clientSettings.ts";
 import {
   clearConnectionCatalog,
@@ -86,6 +87,9 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   const ipc = yield* DesktopIpc.DesktopIpc;
   yield* installNotificationBadge();
   yield* PreviewIpc.installPreviewEventForwarding();
+
+  yield* ipc.handle(setDiscordPresence);
+  yield* ipc.handle(getDiscordPresenceStatus);
 
   yield* ipc.handle(AppActivationIpc.setReady);
   yield* ipc.handle(AppActivationIpc.complete);

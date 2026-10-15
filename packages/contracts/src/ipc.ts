@@ -1122,6 +1122,37 @@ export const DesktopPreviewRecordingSaveInputSchema = Schema.Struct({
 export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
 
+/**
+ * Coarse activity summary the renderer pushes so the desktop main process can
+ * publish Discord Rich Presence. Deliberately carries no thread titles, prompts,
+ * or message content: Rich Presence is visible to the user's Discord friends, so
+ * it is limited to a project name and two counts.
+ */
+export const DesktopDiscordPresenceSchema = Schema.Struct({
+  /** Title of the project the active thread belongs to; null when idle or no project is open. */
+  projectName: Schema.NullOr(Schema.String.check(Schema.isMaxLength(64))),
+  /** Display label of the active thread's model; null when unknown or no thread is open. */
+  modelLabel: Schema.NullOr(Schema.String.check(Schema.isMaxLength(64))),
+  /** Root threads with an actively working run. */
+  workingThreads: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 999 })),
+  /** Root threads waiting on the user: input, approval, failure, or usage limit. */
+  attentionThreads: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 999 })),
+});
+export type DesktopDiscordPresence = typeof DesktopDiscordPresenceSchema.Type;
+
+/**
+ * Rich Presence connection state. `unconfigured` means this build has no
+ * Discord application id, so the feature is inert; `connecting` is the initial
+ * state until the first publish attempt resolves.
+ */
+export const DesktopDiscordPresenceStatusSchema = Schema.Literals([
+  "unconfigured",
+  "connecting",
+  "connected",
+  "disconnected",
+]);
+export type DesktopDiscordPresenceStatus = typeof DesktopDiscordPresenceStatusSchema.Type;
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   /** Absolute path of a dropped or picked file; absent on desktop builds predating it. */
@@ -1130,6 +1161,17 @@ export interface DesktopBridge {
   getClientPlatform?: () => string;
   setNotificationBadge?: (badge: { count: number; image: string | null }) => Promise<void>;
   onNotificationBadgeClear?: (listener: () => void) => () => void;
+  /**
+   * Publish or clear Discord Rich Presence; `null` clears it. Optional: older
+   * desktop builds lack it, and callers no-op when it is missing.
+   */
+  setDiscordPresence?: (presence: DesktopDiscordPresence | null) => Promise<void>;
+  /** Current Rich Presence connection state. Optional: older desktop builds lack it. */
+  getDiscordPresenceStatus?: () => Promise<DesktopDiscordPresenceStatus>;
+  /** Status pushes when the Discord connection appears or drops. */
+  onDiscordPresenceStatus?: (
+    listener: (status: DesktopDiscordPresenceStatus) => void,
+  ) => () => void;
   onTrackpadScrollEnd?: (listener: () => void) => () => void;
   /**
    * The OS locale as a BCP-47 tag, which the renderer cannot read for itself:
