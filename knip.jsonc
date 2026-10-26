@@ -118,6 +118,11 @@
       // These workspace packages are private to this monorepo.
       "includeEntryExports": true,
     },
+    "packages/freebuff-pi": {
+      // Pi loads this optional extension by its configured filesystem path.
+      "entry": ["src/freebuff-provider.ts!"],
+      "includeEntryExports": false,
+    },
     "packages/effect-acp": {
       "includeEntryExports": true,
       "entry": ["test/fixtures/*.ts"],

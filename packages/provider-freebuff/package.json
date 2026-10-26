@@ -1,0 +1,43 @@
+{
+  "name": "@t3tools/provider-freebuff",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./client": {
+      "types": "./src/client.ts",
+      "import": "./src/client.ts"
+    },
+    "./settings": {
+      "types": "./src/settings.ts",
+      "import": "./src/settings.ts"
+    },
+    "./server": {
+      "types": "./src/server.ts",
+      "import": "./src/server.ts"
+    },
+    "./cli-session": {
+      "types": "./src/server/cliSession.ts",
+      "import": "./src/server/cliSession.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run --config ../../vite.config.ts --dir ."
+  },
+  "dependencies": {
+    "@t3tools/contracts": "workspace:*",
+    "@t3tools/provider-acp": "workspace:*",
+    "@t3tools/provider-core": "workspace:*",
+    "@t3tools/shared": "workspace:*",
+    "effect": "catalog:",
+    "node-pty": "^1.2.0-beta.15"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@t3tools/provider-testing": "workspace:*",
+    "@types/node": "catalog:",
+    "effect-acp": "workspace:*",
+    "vite-plus": "catalog:"
+  }
+}

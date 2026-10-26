@@ -51,6 +51,24 @@ const provider: ServerProvider = {
 };
 
 describe("provider compatibility", () => {
+  it("requires the verified Freebuff CLI version", () => {
+    const freebuff = ProviderDriverKind.make("freebuff");
+    for (const [version, expected] of [
+      ["0.2.33", "unsupported"],
+      ["0.2.34", "supported"],
+      ["0.2.35", "supported"],
+      ["0.2.34-beta.1", "unknown"],
+    ] as const) {
+      const advisory = resolveProviderCompatibility(
+        ModelManifest.BUNDLED_MODEL_MANIFEST.compatibility,
+        freebuff,
+        version,
+      );
+      assert.strictEqual(advisory?.status, expected);
+      assert.strictEqual(advisory?.recommendedRange, ">=0.2.34");
+    }
+  });
+
   it("keeps releases before V2 on the OpenCode 1 policy they shipped with", () => {
     // Every installed build fetches main's manifest, and 0.0.45 and older run the
     // V1 orchestrator, which cannot drive OpenCode 2.

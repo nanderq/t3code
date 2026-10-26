@@ -9,6 +9,20 @@ import {
 } from "./ProviderSettingsForm";
 
 describe("ProviderSettingsForm helpers", () => {
+  it("edits Freebuff's binary path through its registered settings schema", () => {
+    const freebuff = providerClients.get(ProviderDriverKind.make("freebuff"));
+    expect(freebuff).toBeDefined();
+    const fields = deriveProviderSettingsFields(freebuff!);
+    expect(fields.map((field) => field.key)).toEqual(["binaryPath"]);
+    const binaryPath = fields[0]!;
+    expect(
+      nextProviderConfigWithFieldValue({ customModels: ["my-agent"] }, binaryPath, "/opt/freebuff"),
+    ).toEqual({ binaryPath: "/opt/freebuff", customModels: ["my-agent"] });
+    expect(
+      nextProviderConfigWithFieldValue({ binaryPath: "/opt/freebuff" }, binaryPath, ""),
+    ).toBeUndefined();
+  });
+
   it("keeps every masked field as a stored secret", () => {
     const settingsSchema = makeProviderSettingsSchema({
       token: TrimmedString.pipe(

@@ -227,6 +227,8 @@ export interface AcpAdapterV2Flavor {
   readonly promptFailure?: (cause: unknown) => OrchestrationV2ProviderFailure;
   readonly driver: ProviderDriverKind;
   readonly capabilities: OrchestrationV2ProviderCapabilities;
+  /** Synthetic runtimes expose a fixed subset of ACP operations. */
+  readonly negotiateCapabilities?: boolean;
   readonly clientCapabilitiesMeta?: NonNullable<
     EffectAcpSchema.InitializeRequest["clientCapabilities"]
   >["_meta"];
@@ -6596,7 +6598,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         yield* Ref.set(activeSessionId, started.sessionId);
         yield* setActiveSessionSetup(started);
         rememberTerminalEnvironment(started.sessionId, yield* readMcpContext(input.threadId));
-        const capabilities = negotiatedCapabilities(flavor.capabilities, started);
+        const capabilities =
+          flavor.negotiateCapabilities === false
+            ? flavor.capabilities
+            : negotiatedCapabilities(flavor.capabilities, started);
         const canLoadSession = started.initializeResult.agentCapabilities?.loadSession === true;
         const canResumeSession =
           started.initializeResult.agentCapabilities?.sessionCapabilities?.resume != null;
@@ -7158,7 +7163,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const prompt: Array<EffectAcpSchema.ContentBlock> = [];
           const instructionState = {
             interactionMode: turnInput.runtimePolicy.interactionMode,
-            hasT3Mcp: (yield* readMcpContext(turnInput.threadId)).servers.length > 0,
+            hasT3Mcp:
+              (flavor.negotiateCapabilities !== false ||
+                flavor.capabilities.tools.supportsMcpTools) &&
+              (yield* readMcpContext(turnInput.threadId)).servers.length > 0,
           } satisfies T3AcpInstructionState;
           const previousInstructionState = (yield* Ref.get(promptInstructionStates)).get(sessionId);
           const compactionMarker = (yield* Ref.get(compactionMarkers)).get(sessionId);

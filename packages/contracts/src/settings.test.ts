@@ -327,6 +327,37 @@ describe("resolveProjectProviderInstanceEnabled", () => {
   const projectId = "project-a" as ProjectId;
   const instanceId = ProviderInstanceId.make("codex_work");
 
+  it("enables the default Freebuff instance and honors machine and project disable settings", () => {
+    const freebuff = ProviderInstanceId.make("freebuff");
+    expect(resolveProjectProviderInstanceEnabled(DEFAULT_SERVER_SETTINGS, null, freebuff)).toBe(
+      true,
+    );
+    expect(
+      resolveProjectProviderInstanceEnabled(
+        {
+          ...DEFAULT_SERVER_SETTINGS,
+          providerInstances: {
+            [freebuff]: { driver: ProviderDriverKind.make("freebuff"), enabled: false },
+          },
+        },
+        null,
+        freebuff,
+      ),
+    ).toBe(false);
+    expect(
+      resolveProjectProviderInstanceEnabled(
+        {
+          ...DEFAULT_SERVER_SETTINGS,
+          projectSettingsOverrides: {
+            [projectId]: { providerInstances: { [freebuff]: { enabled: false } } },
+          },
+        },
+        projectId,
+        freebuff,
+      ),
+    ).toBe(false);
+  });
+
   it("lets a project disable an instance the machine enabled", () => {
     const settings: ServerSettings = {
       ...DEFAULT_SERVER_SETTINGS,

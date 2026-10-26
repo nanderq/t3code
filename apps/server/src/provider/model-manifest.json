@@ -1,7 +1,16 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-21T06:20:00Z",
+  "updatedAt": "2026-10-23T15:47:00Z",
   "compatibility": [
+    {
+      "driver": "freebuff",
+      "t3CodeRange": ">=0.1.1",
+      "recommendedRange": ">=0.2.34",
+      "ranges": [
+        { "range": ">=0.2.34", "status": "supported" },
+        { "range": "<0.2.34", "status": "unsupported" }
+      ]
+    },
     {
       "driver": "codex",
       "t3CodeRange": ">=0.0.44",

@@ -1,0 +1,26 @@
+{
+  "name": "@t3tools/freebuff-pi",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/freebuff-provider.ts",
+      "import": "./src/freebuff-provider.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run --config ../../vite.config.ts --dir ."
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "1.4.0",
+    "@t3tools/provider-freebuff": "workspace:*",
+    "node-pty": "^1.2.0-beta.15"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "1.4.0",
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

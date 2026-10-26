@@ -117,6 +117,7 @@ export type CustomModelSetting = typeof CustomModelSetting.Type;
 const CODEX_DRIVER_KIND = ProviderDriverKind.make("codex");
 const CLAUDE_DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
 const CURSOR_DRIVER_KIND = ProviderDriverKind.make("cursor");
+const FREEBUFF_DRIVER_KIND = ProviderDriverKind.make("freebuff");
 const GROK_DRIVER_KIND = ProviderDriverKind.make("grok");
 const MUSE_DRIVER_KIND = ProviderDriverKind.make("muse");
 const PI_DRIVER_KIND = ProviderDriverKind.make("pi");
@@ -147,6 +148,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderDriverKind, strin
   [CODEX_DRIVER_KIND]: DEFAULT_MODEL,
   [CLAUDE_DRIVER_KIND]: "claude-fable-5-1",
   [CURSOR_DRIVER_KIND]: "auto",
+  [FREEBUFF_DRIVER_KIND]: "freebuff",
   // Product slug, not an ACP model id. The Grok adapter treats it as "the session's current model".
   [GROK_DRIVER_KIND]: "grok-build",
   [MUSE_DRIVER_KIND]: MUSE_DEFAULT_MODEL,
@@ -198,6 +200,7 @@ export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderDriverKind, string>>
   [CODEX_DRIVER_KIND]: "Codex",
   [CLAUDE_DRIVER_KIND]: "Claude",
   [CURSOR_DRIVER_KIND]: "Cursor",
+  [FREEBUFF_DRIVER_KIND]: "Freebuff",
   [GROK_DRIVER_KIND]: "Grok",
   [MUSE_DRIVER_KIND]: "Muse Code",
   [ACP_REGISTRY_DRIVER_KIND]: "ACP Registry",

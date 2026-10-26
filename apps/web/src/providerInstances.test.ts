@@ -425,6 +425,15 @@ describe("getDefaultProviderInstanceModel", () => {
 });
 
 describe("resolveDefaultProviderModelSelection", () => {
+  it("selects Freebuff's default alias and preserves existing Freebuff thread selections", () => {
+    const providers = [
+      provider({ provider: ProviderDriverKind.make("freebuff"), instanceId: "freebuff" }),
+    ];
+    const selection = { instanceId: ProviderInstanceId.make("freebuff"), model: "freebuff" };
+    expect(resolveDefaultProviderModelSelection(providers, null)).toEqual(selection);
+    expect(resolveDefaultProviderModelSelection(providers, selection)).toBe(selection);
+  });
+
   // regression: #4117 users without Codex got a broken default provider
   it.each([
     ["codex", "codex", "gpt-5.6"],

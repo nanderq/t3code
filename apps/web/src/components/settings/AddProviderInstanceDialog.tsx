@@ -127,11 +127,11 @@ export function AddProviderInstanceDialog({
   const [isSaving, setIsSaving] = useState(false);
   const [createdInstanceId, setCreatedInstanceId] = useState<ProviderInstanceId | null>(null);
 
-  // Codex and Claude run at their default slots before they are configured, so
-  // those ids stay reserved; other unconfigured default slots are free to take.
+  // Enabled defaults run before they are configured, so their instance ids stay reserved.
   const existingIds = new Set([
     "codex",
     "claudeAgent",
+    "freebuff",
     ...Object.keys(settings.providerInstances ?? {}),
   ]);
 

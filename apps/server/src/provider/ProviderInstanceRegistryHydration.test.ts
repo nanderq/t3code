@@ -3,6 +3,7 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  resolveProviderInstanceEnabled,
   type ServerSettings,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
@@ -17,6 +18,13 @@ function settingsWith(overrides: Partial<ServerSettings>): ServerSettings {
 }
 
 describe("deriveProviderInstanceConfigMap", () => {
+  it("hydrates Freebuff's existing thread instance id as an enabled built-in provider", () => {
+    const freebuff = ProviderInstanceId.make("freebuff");
+    const merged = deriveProviderInstanceConfigMap(DEFAULT_SERVER_SETTINGS);
+    expect(merged[freebuff]).toEqual({ driver: ProviderDriverKind.make("freebuff") });
+    expect(resolveProviderInstanceEnabled(merged[freebuff]!)).toBe(true);
+  });
+
   it("turns a machine-disabled instance on when a project enables it", () => {
     const settings = settingsWith({
       providerInstances: {
